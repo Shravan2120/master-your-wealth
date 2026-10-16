@@ -10,7 +10,7 @@ import { ServicesSection } from "./components/sections/Services";
 import { FaqSection } from "./components/sections/Faq";
 import { ContactSection } from "./components/sections/Contact";
 import { KYCSection } from "./components/sections/KYCSection";
-
+import WhatsAppButton from "./components/sections/WhatsAppButton";
 function App() {
   return (
     <>
@@ -27,6 +27,7 @@ function App() {
         <KYCSection />
         <FaqSection />
         <ContactSection />
+        <WhatsAppButton />
       </main>
 
       <Footer />
