@@ -37,29 +37,38 @@ export function ContactSection() {
   const [errorMessage, setErrorMessage] = useState("");
   const captchaRef = useRef<ReCAPTCHA>(null);
 
-  const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setErrorMessage("");
 
-    if (!authorized) {
-      setErrorMessage("Please authorize us to contact you before submitting.");
-      return;
-    }
+const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
+  event.preventDefault();
+  setErrorMessage("");
 
-    if (!RECAPTCHA_SITE_KEY || !WORKER_URL) {
-      setErrorMessage(
-        "The form setup is incomplete. Please configure the reCAPTCHA site key and Cloudflare Worker URL."
-      );
-      return;
-    }
+  if (!authorized) {
+    setErrorMessage(
+      "Please authorize us to contact you before submitting."
+    );
+    return;
+  }
 
-    const form = event.currentTarget;
-    const formData = new FormData(form);
-    const recaptchaToken = captchaRef.current?.getValue();
+  if (!RECAPTCHA_SITE_KEY || !WORKER_URL) {
+    setErrorMessage(
+      "The form setup is incomplete. Please configure the reCAPTCHA site key and Cloudflare Worker URL."
+    );
+    return;
+  }
+
+  const form = event.currentTarget;
+  const formData = new FormData(form);
+
+  setIsSubmitting(true);
+
+  try {
+    // Execute invisible reCAPTCHA when the visitor submits.
+    const recaptchaToken = await captchaRef.current?.executeAsync();
 
     if (!recaptchaToken) {
-      setErrorMessage("Please complete the reCAPTCHA checkbox.");
-      return;
+      throw new Error(
+        "Security verification failed. Please try submitting again."
+      );
     }
 
     const payload = {
@@ -69,45 +78,42 @@ export function ContactSection() {
       mobile: String(formData.get("mobile") ?? "").trim(),
       message: String(formData.get("message") ?? "").trim(),
       recaptchaToken,
-      // Honeypot field: legitimate visitors should leave this empty.
       website: String(formData.get("website") ?? "").trim(),
     };
 
-    setIsSubmitting(true);
+    const response = await fetch(WORKER_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
 
-    try {
-      const response = await fetch(WORKER_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+    const result = (await response.json().catch(() => null)) as
+      | { success?: boolean; error?: string }
+      | null;
 
-      const result = (await response.json().catch(() => null)) as
-        | { success?: boolean; error?: string }
-        | null;
-
-      if (!response.ok || !result?.success) {
-        throw new Error(
-          result?.error ||
-            "We couldn't send your enquiry. Please try again in a moment."
-        );
-      }
-
-      setSent(true);
-      setAuthorized(false);
-      setMessage("");
-      form.reset();
-    } catch (error) {
-      setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : "Something went wrong. Please try again."
+    if (!response.ok || !result?.success) {
+      throw new Error(
+        result?.error ||
+          "We couldn't send your enquiry. Please try again in a moment."
       );
-    } finally {
-      captchaRef.current?.reset();
-      setIsSubmitting(false);
     }
-  };
+
+    setSent(true);
+    setAuthorized(false);
+    setMessage("");
+    form.reset();
+  } catch (error) {
+    setErrorMessage(
+      error instanceof Error
+        ? error.message
+        : "Something went wrong. Please try again."
+    );
+  } finally {
+    captchaRef.current?.reset();
+    setIsSubmitting(false);
+  }
+};
+
 
   return (
     <section id="contact" className="scroll-mt-20 bg-[#F7F9FC]">
@@ -376,10 +382,14 @@ export function ContactSection() {
                   </label>
 
                   <div className="overflow-x-auto">
-                    <ReCAPTCHA
-                      ref={captchaRef}
-                      sitekey={RECAPTCHA_SITE_KEY}
-                    />
+
+<ReCAPTCHA
+  ref={captchaRef}
+  sitekey={RECAPTCHA_SITE_KEY}
+  size="invisible"
+  badge="bottomright"
+/>
+
                   </div>
 
                   {errorMessage && (
